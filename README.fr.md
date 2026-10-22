@@ -18,7 +18,6 @@ Un plugin [SwiftBar](https://swiftbar.app) qui affiche dans la barre de menus ma
 - Raccourcis : ouvrir Cinemix.radio, écouter la station dans Apple Music, chercher le morceau en cours sur ta plateforme.
 - Réglage de la plateforme : Apple Music, Spotify, Deezer, Qobuz ou YouTube Music (menu « Plateforme d'écoute »).
 - Modes clair et sombre.
-- Mode démo pour faire des captures d'écran avec le morceau de ton choix.
 
 ## Prérequis
 
@@ -47,30 +46,13 @@ Ouvre le sous-menu « Plateforme d'écoute » et choisis ta plateforme. Le choix
 | Apple Music | Ouvre la station Cinemix dans Musique | Cherche « Artiste - Titre » |
 | Spotify, Deezer, Qobuz, YouTube Music | Non affiché (pas de station Cinemix) | Cherche « Artiste - Titre » |
 
-## Mode démo (captures d'écran)
-
-Affiche le morceau de ton choix à la place du morceau réel. La jaquette est trouvée automatiquement grâce à l'API de recherche iTunes.
-
-```bash
-python3 cinemix.30s.py --demo "John Williams" "Theme from Jurassic Park" \
-  --album "Jurassic Park (Original Motion Picture Soundtrack)" --duration 3:08
-```
-
-Autres options : `--cover <url ou chemin d'image>`, `--next "Prochain album"`, `--hours <n>` (2 par défaut : le mode démo s'arrête tout seul).
-
-Pour revenir au vrai morceau :
-
-```bash
-python3 cinemix.30s.py --demo-off
-```
-
 ## Personnalisation
 
 Les constantes en haut de `cinemix.30s.py` règlent l'apparence : taille de la jaquette, couleurs du texte, largeur de la ligne « à suivre », taille et position de l'icône de la barre de menus, liste des plateformes.
 
 ## Fichiers créés
 
-- `~/.config/cinemix/` : plateforme choisie, état du mode démo, et un petit outil Swift (`cinemix-card`) compilé au premier lancement. Il dessine la jaquette arrondie et l'icône de la barre de menus. Son code source est la constante `CARD_SWIFT` du plugin.
+- `~/.config/cinemix/` : plateforme choisie et un petit outil Swift (`cinemix-card`) compilé au premier lancement. Il dessine la jaquette arrondie et l'icône de la barre de menus. Son code source est la constante `CARD_SWIFT` du plugin.
 - Ton dossier temporaire : de petites images en cache (`cinemix-*.png`), supprimées au bout de 24 heures.
 
 Pour tout supprimer, retire le plugin et le dossier `~/.config/cinemix/`.

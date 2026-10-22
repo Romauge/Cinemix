@@ -18,7 +18,6 @@ A [SwiftBar](https://swiftbar.app) plugin that shows what is playing on [Cinemix
 - Shortcuts: open Cinemix.radio, listen to the station in Apple Music, search the current track on your streaming platform.
 - Platform setting: Apple Music, Spotify, Deezer, Qobuz or YouTube Music (menu "Plateforme d'écoute").
 - Light and dark mode.
-- Demo mode to take screenshots with any track you like.
 
 ## Requirements
 
@@ -47,30 +46,13 @@ Open the "Plateforme d'écoute" submenu and pick your platform. The choice is re
 | Apple Music | Opens the Cinemix station in Music | Searches "Artist - Title" |
 | Spotify, Deezer, Qobuz, YouTube Music | Not shown (they have no Cinemix station) | Searches "Artist - Title" |
 
-## Demo mode (screenshots)
-
-Show a track of your choice instead of the live one. The cover is found automatically through the iTunes Search API.
-
-```bash
-python3 cinemix.30s.py --demo "John Williams" "Theme from Jurassic Park" \
-  --album "Jurassic Park (Original Motion Picture Soundtrack)" --duration 3:08
-```
-
-Other options: `--cover <url or image path>`, `--next "Next album"`, `--hours <n>` (default 2: demo mode stops by itself).
-
-Back to the live track:
-
-```bash
-python3 cinemix.30s.py --demo-off
-```
-
 ## Customizing
 
 The constants at the top of `cinemix.30s.py` control the look: cover size, text colors, width of the "next" line, size and position of the menu bar icon, list of platforms.
 
 ## Files created
 
-- `~/.config/cinemix/`: chosen platform, demo state, and a small Swift helper (`cinemix-card`) compiled on first run. It draws the rounded cover and the menu bar icon. Its source is the `CARD_SWIFT` constant in the plugin.
+- `~/.config/cinemix/`: chosen platform and a small Swift helper (`cinemix-card`) compiled on first run. It draws the rounded cover and the menu bar icon. Its source is the `CARD_SWIFT` constant in the plugin.
 - Your temporary folder: small cached images (`cinemix-*.png`), deleted after 24 hours.
 
 To remove everything, delete the plugin and `~/.config/cinemix/`.

@@ -34,19 +34,14 @@ affichage plus simple. Au premier lancement, il compile en arrière-plan un peti
 (son code est dans CARD_SWIFT, plus bas) qui est rangé dans ~/.config/cinemix.
 
 Réglages : menu « Plateforme d'écoute » (Apple Music, Spotify, Deezer, Qobuz, YouTube Music).
-Mode démo, pour les captures d'écran :
-  cinemix.30s.py --demo "Artiste" "Titre" --album "Album" --duration 3:08
-  cinemix.30s.py --demo-off
 """
 
 from __future__ import annotations  # syntaxe `str | None` sur Python < 3.10
 
-import argparse
 import base64
 import functools
 import hashlib
 import html
-import json
 import os
 import re
 import struct
@@ -111,8 +106,6 @@ SCRIPT = os.path.abspath(__file__)
 # Chemin fixe : le terminal n'a pas les variables d'environnement que SwiftBar définit
 CONFIG_DIR = os.path.expanduser("~/.config/cinemix")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "platform")
-DEMO_FILE = os.path.join(CONFIG_DIR, "demo.json")
-DEMO_HOURS = 2           # le mode démo s'arrête tout seul au bout de ce délai
 CARD_BIN = os.path.join(CONFIG_DIR, "cinemix-card")
 CACHE_MAX_AGE = 24 * 3600  # les images en cache plus anciennes sont supprimées
 
@@ -305,23 +298,17 @@ def is_dark_mode() -> bool:
 
 
 def fetch_cover_path(url: str) -> str | None:
-    """Jaquette (URL ou fichier local) redimensionnée via `sips`, mise en cache."""
-    local = not url.startswith("http")
-    ident = f"{url}{os.path.getmtime(url)}" if local and os.path.exists(url) else url
+    """Jaquette redimensionnée (via `sips`), mise en cache par URL."""
     cache = os.path.join(
         tempfile.gettempdir(),
-        f"cinemix-cover-{COVER_SIZE}-{hashlib.md5(ident.encode()).hexdigest()}.png",
+        f"cinemix-cover-{COVER_SIZE}-{hashlib.md5(url.encode()).hexdigest()}.png",
     )
     try:
         if not os.path.exists(cache):
+            req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+                raw = resp.read()
             src = cache + ".src"
-            if local:
-                with open(os.path.expanduser(url), "rb") as f:
-                    raw = f.read()
-            else:
-                req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-                with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-                    raw = resp.read()
             with open(src, "wb") as f:
                 f.write(raw)
             subprocess.run(
@@ -497,83 +484,11 @@ def render_error(msg: str) -> None:
     emit("Réessayer | refresh=true")
 
 
-def load_demo() -> dict | None:
-    """Morceau imposé pour les captures d'écran (voir `--demo`), s'il est actif."""
-    try:
-        with open(DEMO_FILE, encoding="utf-8") as f:
-            d = json.load(f)
-    except (OSError, ValueError):
-        return None
-    if time.time() > d.get("expires", 0):
-        return None
-    return {
-        "track": f"{d['artist']} - {d['title']}",
-        "artist": d["artist"],
-        "title": d["title"],
-        "album": d.get("album", ""),
-        "duration": d.get("duration", ""),
-        "cover_url": d.get("cover"),
-        "upcoming": d.get("next", ""),
-    }
-
-
-def lookup_cover(artist: str, album: str) -> str | None:
-    """Pochette trouvée via l'API de recherche iTunes (agrandie à 600 px)."""
-    q = urllib.parse.urlencode({"term": f"{artist} {album}", "entity": "album", "limit": 1})
-    try:
-        with urllib.request.urlopen(f"https://itunes.apple.com/search?{q}", timeout=TIMEOUT) as resp:
-            results = json.load(resp)["results"]
-        return results[0]["artworkUrl100"].replace("100x100", "600x600") if results else None
-    except Exception:  # noqa: BLE001
-        return None
-
-
-def refresh_swiftbar() -> None:
-    subprocess.run(["open", "-g", "swiftbar://refreshallplugins"], check=False)
-
-
-def demo_cli(argv: list[str]) -> None:
-    ap = argparse.ArgumentParser(
-        prog="cinemix.30s.py --demo",
-        description="Affiche un morceau choisi dans le plugin (captures d'écran).",
-    )
-    ap.add_argument("artist")
-    ap.add_argument("title")
-    ap.add_argument("--album", default="")
-    ap.add_argument("--duration", default="")
-    ap.add_argument("--cover", help="URL ou chemin d'une image (sinon recherche iTunes)")
-    ap.add_argument("--next", default="", help="texte de la section « À suivre »")
-    ap.add_argument("--hours", type=float, default=DEMO_HOURS, help="durée avant arrêt automatique")
-    a = ap.parse_args(argv)
-    cover = a.cover or lookup_cover(a.artist, a.album or a.title)
-    os.makedirs(os.path.dirname(DEMO_FILE), exist_ok=True)
-    with open(DEMO_FILE, "w", encoding="utf-8") as f:
-        json.dump(
-            {
-                "artist": a.artist, "title": a.title, "album": a.album,
-                "duration": a.duration, "cover": cover, "next": a.next,
-                "expires": time.time() + a.hours * 3600,
-            },
-            f, ensure_ascii=False,
-        )
-    refresh_swiftbar()
-    print(f"Mode démo activé pour {a.hours:g} h. Jaquette : {cover or 'aucune trouvée'}")
-
-
-def demo_off() -> None:
-    try:
-        os.remove(DEMO_FILE)
-    except OSError:
-        pass
-    refresh_swiftbar()
-    print("Mode démo désactivé.")
-
-
 def build_menu() -> tuple[str, str]:
     """(titre de la barre de menus, corps du menu) pour le morceau en cours."""
     _menu_lines.clear()
     try:
-        info = load_demo() or parse_playing(fetch_page())
+        info = parse_playing(fetch_page())
         if info:
             render(info)
         else:
@@ -608,9 +523,5 @@ def main() -> None:
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "--set-platform":
         save_platform(sys.argv[2])
-    elif len(sys.argv) > 1 and sys.argv[1] == "--demo":
-        demo_cli(sys.argv[2:])
-    elif len(sys.argv) > 1 and sys.argv[1] == "--demo-off":
-        demo_off()
     else:
         main()
