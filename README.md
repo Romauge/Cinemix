@@ -4,7 +4,9 @@ A [SwiftBar](https://swiftbar.app) plugin that shows what is playing on [Cinemix
 
 [Version française](README.fr.md)
 
-<!-- Add a screenshot here, for example: ![Cinemix Now Playing](docs/screenshot.png) -->
+![Cinemix Now Playing: menu bar](docs/menubar.png)
+
+![Cinemix Now Playing: open menu](docs/menu.webp)
 
 > Unofficial plugin, not affiliated with Cinemix. It reads the public page
 > `https://cinemix.us/SAM/playing.php`, whose structure can change without notice.

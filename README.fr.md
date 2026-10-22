@@ -4,7 +4,9 @@ Un plugin [SwiftBar](https://swiftbar.app) qui affiche dans la barre de menus ma
 
 [English version](README.md)
 
-<!-- Ajouter une capture ici, par exemple : ![Cinemix Now Playing](docs/screenshot.png) -->
+![Cinemix Now Playing : barre de menus](docs/menubar.png)
+
+![Cinemix Now Playing : menu ouvert](docs/menu.webp)
 
 > Plugin non officiel, sans lien avec Cinemix. Il lit la page publique
 > `https://cinemix.us/SAM/playing.php`, dont la structure peut changer sans préavis.
