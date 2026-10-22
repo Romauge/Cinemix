@@ -1,0 +1,6 @@
+.DS_Store
+__pycache__/
+*.pyc
+
+# Anciennes versions du plugin, gardées en local seulement
+original/
