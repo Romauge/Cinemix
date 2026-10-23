@@ -6,15 +6,16 @@ Un plugin [SwiftBar](https://swiftbar.app) qui affiche dans la barre de menus ma
 
 ![Cinemix Now Playing : menu ouvert](docs/menu.webp)
 
-> Plugin non officiel, sans lien avec Cinemix. Il lit la page publique
-> `https://cinemix.us/SAM/playing.php`, dont la structure peut changer sans préavis.
-> Fourni tel quel.
+> Plugin non officiel, sans lien avec Cinemix. Il lit les pages publiques de la radio
+> `https://cinemix.us/SAM/playing.php` (morceau en cours) et
+> `https://vhost.fastserv.com/~cinemix/samPHPweb/web/playing.php` (prochain morceau),
+> dont la structure peut changer sans préavis. Fourni tel quel.
 
 ## Fonctionnalités
 
 - Morceau en cours dans la barre de menus, avec une icône de radio.
 - Menu avec la jaquette (coins arrondis), le titre, l'artiste, l'album et la durée.
-- Prochain album annoncé.
+- Prochain morceau annoncé (titre, artiste et album).
 - Raccourcis : ouvrir Cinemix.radio, écouter la station dans Apple Music, chercher le morceau en cours sur ta plateforme.
 - Réglage de la plateforme : Apple Music, Spotify, Deezer, Qobuz ou YouTube Music (menu « Plateforme d'écoute »).
 - Modes clair et sombre.

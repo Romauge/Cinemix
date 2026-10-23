@@ -18,8 +18,9 @@ Affiche dans la barre de menus macOS le morceau actuellement diffusé sur Cinemi
 (radio de bandes originales de films) : titre, artiste, album, durée, jaquette,
 prochain album, et raccourcis vers la radio et vers une plateforme d'écoute au choix.
 
-Plugin non officiel, sans lien avec Cinemix : il lit la page publique
-https://cinemix.us/SAM/playing.php, dont la structure peut changer sans préavis.
+Plugin non officiel, sans lien avec Cinemix : il lit les pages publiques de la radio
+(https://cinemix.us/SAM/playing.php et la liste « Coming up » sur vhost.fastserv.com),
+dont la structure peut changer sans préavis.
 
 Installation :
   1. Installer SwiftBar : https://swiftbar.app  (ou `brew install --cask swiftbar`)
@@ -42,7 +43,6 @@ import base64
 import functools
 import hashlib
 import html
-import json
 import os
 import re
 import struct
@@ -55,6 +55,8 @@ import urllib.parse
 import urllib.request
 
 URL = "https://cinemix.us/SAM/playing.php"
+# Page SAM de la radio avec la liste « Coming up » (titre, artiste et album des prochains morceaux)
+COMING_URL = "https://vhost.fastserv.com/~cinemix/samPHPweb/web/playing.php"
 # Station Cinemix sur Apple Music. Schéma `music://` -> ouvre directement
 # l'app Music sur macOS (au lieu de passer par le navigateur).
 STATION_URL = "music://music.apple.com/fr/station/cinemix/ra.1461058420"
@@ -430,37 +432,21 @@ def menu_icon(name: str) -> str:
     return f"sfimage={name}"
 
 
-def lookup_composer(album: str) -> str | None:
-    """Compositeur d'un album, d'après la recherche iTunes (résultat mis en cache).
-
-    Seuls les albums classés « Soundtrack » ou « Score » sont retenus, pour éviter
-    de confondre « Addicted » ou « Goal » avec un single qui porte le même nom.
-    """
-    cache = os.path.join(
-        tempfile.gettempdir(), f"cinemix-composer-{hashlib.md5(album.encode()).hexdigest()}.json"
-    )
+def fetch_next() -> dict | None:
+    """Prochain morceau (titre, artiste, album), lu dans la liste « Coming up » de la radio."""
     try:
-        if os.path.exists(cache):
-            with open(cache, encoding="utf-8") as f:
-                return json.load(f)
-        q = urllib.parse.urlencode({"term": album, "entity": "album", "limit": 10, "country": "us"})
-        with urllib.request.urlopen(f"https://itunes.apple.com/search?{q}", timeout=TIMEOUT) as resp:
-            results = json.load(resp)["results"]
-        wanted = re.sub(r"\s*\(.*?\)", "", album).strip().lower()  # sans « (Score) » & co
-        artist = next(
-            (
-                r["artistName"]
-                for r in results
-                if wanted in r["collectionName"].lower()
-                and any(k in r["primaryGenreName"].lower() for k in ("soundtrack", "score"))
-                and r["artistName"] != "Various Artists"
-            ),
-            None,
-        )
-        with open(cache, "w", encoding="utf-8") as f:
-            json.dump(artist, f)
-        return artist
-    except Exception:  # noqa: BLE001 - facultatif : on affiche l'album seul
+        req = urllib.request.Request(COMING_URL, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+            page = resp.read().decode("utf-8", errors="replace")
+        section = page.split("BEGIN:COMING UP", 1)[1].split("END:COMING UP", 1)[0]
+        # <a ... title="Artiste - Titre"> Album <br /> Artiste </a> : le premier = prochain morceau
+        m = re.search(r'<a [^>]*title="([^"]+)"[^>]*>\s*([^<]*?)\s*<br\s*/?>', section)
+        if not m:
+            return None
+        track = html.unescape(m.group(1)).strip()
+        artist, title = track.split(" - ", 1) if " - " in track else ("", track)
+        return {"title": title, "artist": artist, "album": html.unescape(m.group(2)).strip()}
+    except Exception:  # noqa: BLE001 - facultatif : on retombe sur l'album de la page principale
         return None
 
 
@@ -527,13 +513,22 @@ def render(info: dict) -> None:
         info_line("\n".join(block), image=file_b64(cover) if cover else None)
 
     # --- À suivre -------------------------------------------------------------
-    if info["upcoming"]:
+    # En mode démo, pas de lecture réseau : on n'affiche que le texte imposé
+    nxt = None if info.get("demo") else fetch_next()
+    if nxt:
+        emit("---")
+        info_line("À SUIVRE", size=HEADER_SIZE)
+        head = f"{nxt['title']} - {nxt['artist']}" if nxt["artist"] else nxt["title"]
+        lines = [textwrap.fill(head, UPCOMING_WIDTH)]
+        if nxt["album"]:
+            lines.append(textwrap.fill(f"({nxt['album']})", UPCOMING_WIDTH))
+        info_line("\n".join(lines))
+    elif info["upcoming"]:
         emit("---")
         info_line("À SUIVRE", size=HEADER_SIZE)
         # SwiftBar liste les prochains albums séparés par des virgules : on garde le premier
         next_up = re.split(r",\s+", info["upcoming"])[0]
-        composer = lookup_composer(next_up)
-        info_line("\n".join(filter(None, [textwrap.fill(next_up, UPCOMING_WIDTH), composer])))
+        info_line(textwrap.fill(next_up, UPCOMING_WIDTH))
 
     # --- Actions --------------------------------------------------------------
     key = load_platform()

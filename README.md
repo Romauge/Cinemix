@@ -6,15 +6,16 @@ A [SwiftBar](https://swiftbar.app) plugin that shows what is playing on [Cinemix
 
 ![Cinemix Now Playing: open menu](docs/menu.webp)
 
-> Unofficial plugin, not affiliated with Cinemix. It reads the public page
-> `https://cinemix.us/SAM/playing.php`, whose structure can change without notice.
-> Provided as is.
+> Unofficial plugin, not affiliated with Cinemix. It reads the station's public pages
+> `https://cinemix.us/SAM/playing.php` (current track) and
+> `https://vhost.fastserv.com/~cinemix/samPHPweb/web/playing.php` (next track),
+> whose structure can change without notice. Provided as is.
 
 ## Features
 
 - Current track in the menu bar, with a radio icon.
 - Menu with the album cover (rounded corners), title, artist, album and duration.
-- Next album coming up.
+- Next track coming up (title, artist and album).
 - Shortcuts: open Cinemix.radio, listen to the station in Apple Music, search the current track on your streaming platform.
 - Platform setting: Apple Music, Spotify, Deezer, Qobuz or YouTube Music (menu "Plateforme d'écoute").
 - Light and dark mode.
