@@ -99,6 +99,8 @@ INFO_COLOR_DARK = 252    # idem, mode sombre
 HEADER_SIZE = 10         # taille du titre de section « À SUIVRE »
 UPCOMING_WIDTH = 60      # largeur max (caractères) de « À suivre », avant retour à la ligne
 TITLE_ICON_PT = 12       # taille (points) de l'icône « radio » dans la barre de menus
+MENU_ICON_PT = 13         # taille (points) des icônes du menu
+MENU_ICON_BOX = (20, 18)  # cadre commun à toutes les icônes du menu (largeur, hauteur), en points
 TITLE_ICON_RAISE = 1.5   # décalage vers le haut de l'icône (points), pour l'aligner sur le texte
 
 # Fichiers
@@ -113,8 +115,32 @@ CACHE_MAX_AGE = 24 * 3600  # les images en cache plus anciennes sont supprimées
 CARD_SWIFT = r'''import AppKit
 
 // usage : cinemix-card <jaquette.png|-> <sortie.png> <1 si mode sombre> <ligne>...
+//         cinemix-card --icon <nom SF Symbol> <taille en points> <sortie.png> <largeur> <hauteur>
 //         cinemix-card --symbol <nom SF Symbol> <taille en points> <sortie.png> <marge basse en pixels>
 let args = CommandLine.arguments
+
+if args[1] == "--icon" {
+    // Symbole centré dans un cadre de taille fixe : toutes les icônes du menu ont la même
+    // largeur, donc les textes des lignes s'alignent (comme dans les menus macOS).
+    let canvas = NSSize(width: CGFloat(Double(args[5])!), height: CGFloat(Double(args[6])!))
+    let config = NSImage.SymbolConfiguration(pointSize: CGFloat(Double(args[3])!), weight: .regular)
+    guard let base = NSImage(systemSymbolName: args[2], accessibilityDescription: nil),
+          let symbol = base.withSymbolConfiguration(config) else { exit(1) }
+    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(canvas.width * 2), pixelsHigh: Int(canvas.height * 2),
+                               bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                               colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+    rep.size = canvas
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+    let box = NSRect(x: (canvas.width - symbol.size.width) / 2, y: (canvas.height - symbol.size.height) / 2,
+                     width: symbol.size.width, height: symbol.size.height)
+    symbol.draw(in: box)
+    NSColor.black.set()
+    box.fill(using: .sourceIn)
+    NSGraphicsContext.restoreGraphicsState()
+    try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: args[4]))
+    exit(0)
+}
 
 if args[1] == "--symbol" {
     // Symbole dessiné en noir (image « template », teintée par macOS), à l'échelle x2
@@ -381,6 +407,28 @@ def title_icon() -> str:
     return "sfimage=radio"
 
 
+def menu_icon(name: str) -> str:
+    """Paramètres SwiftBar d'une icône de menu : symbole centré dans un cadre de taille fixe.
+
+    Les SF Symbols n'ont pas tous la même largeur, ce qui décale les textes ; avec un cadre
+    commun, les textes s'alignent comme dans les menus macOS. Secours : `sfimage`.
+    """
+    if ensure_card_tool():
+        key = hashlib.md5(CARD_SWIFT.encode()).hexdigest()
+        out = os.path.join(tempfile.gettempdir(), f"cinemix-menuicon-{name}-{key}.png")
+        try:
+            if not os.path.exists(out):
+                subprocess.run(
+                    [CARD_BIN, "--icon", name, str(MENU_ICON_PT), out, *map(str, MENU_ICON_BOX)],
+                    capture_output=True, timeout=10, check=True,
+                )
+            w, h = png_points(out)
+            return f"templateImage={file_b64(out)} width={w} height={h}"
+        except Exception:  # noqa: BLE001 - icône facultative
+            pass
+    return f"sfimage={name}"
+
+
 def build_card(cover: str | None, lines: list[str], dark: bool) -> str | None:
     """Image « jaquette arrondie + textes à droite » en base64, ou None."""
     if not ensure_card_tool():
@@ -455,20 +503,20 @@ def render(info: dict) -> None:
     key = load_platform()
     platform = PLATFORMS[key]
     emit("---")
-    emit("Ouvrir Cinemix.radio | href=https://www.cinemix.radio/ sfimage=popcorn")
+    emit(f"Ouvrir Cinemix.radio | href=https://www.cinemix.radio/ {menu_icon('popcorn')}")
     if platform["listen"]:
-        emit(f"Écouter dans {platform['name']} | href={platform['listen']} sfimage=music.note")
+        emit(f"Écouter dans {platform['name']} | href={platform['listen']} {menu_icon('music.note')}")
     if info["track"]:
         q = urllib.parse.quote(info["track"])
         emit(
             f"Chercher sur {platform['name']} | "
-            f"href={platform['search'].format(q=q)} sfimage=magnifyingglass"
+            f"href={platform['search'].format(q=q)} {menu_icon('magnifyingglass')}"
         )
-    emit("Rafraîchir le plugin | refresh=true sfimage=arrow.trianglehead.2.clockwise.rotate.90")
+    emit(f"Rafraîchir le plugin | refresh=true {menu_icon('arrow.trianglehead.2.clockwise.rotate.90')}")
 
     # --- Réglage de la plateforme d'écoute ------------------------------------
     emit("---")
-    emit("Plateforme d'écoute | sfimage=gearshape")
+    emit(f"Plateforme d'écoute | {menu_icon('gearshape')}")
     for k, p in PLATFORMS.items():
         check = " checked=true" if k == key else ""
         emit(
