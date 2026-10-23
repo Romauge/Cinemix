@@ -1,4 +1,4 @@
-# Cinemix Now Playing
+# Cinemix : À l'écoute
 
 Un plugin [SwiftBar](https://swiftbar.app) qui affiche dans la barre de menus macOS ce qui passe sur [Cinemix](https://www.cinemix.radio/), la radio de bandes originales de films.
 
