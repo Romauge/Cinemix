@@ -42,6 +42,7 @@ import base64
 import functools
 import hashlib
 import html
+import json
 import os
 import re
 import struct
@@ -429,6 +430,40 @@ def menu_icon(name: str) -> str:
     return f"sfimage={name}"
 
 
+def lookup_composer(album: str) -> str | None:
+    """Compositeur d'un album, d'après la recherche iTunes (résultat mis en cache).
+
+    Seuls les albums classés « Soundtrack » ou « Score » sont retenus, pour éviter
+    de confondre « Addicted » ou « Goal » avec un single qui porte le même nom.
+    """
+    cache = os.path.join(
+        tempfile.gettempdir(), f"cinemix-composer-{hashlib.md5(album.encode()).hexdigest()}.json"
+    )
+    try:
+        if os.path.exists(cache):
+            with open(cache, encoding="utf-8") as f:
+                return json.load(f)
+        q = urllib.parse.urlencode({"term": album, "entity": "album", "limit": 10, "country": "us"})
+        with urllib.request.urlopen(f"https://itunes.apple.com/search?{q}", timeout=TIMEOUT) as resp:
+            results = json.load(resp)["results"]
+        wanted = re.sub(r"\s*\(.*?\)", "", album).strip().lower()  # sans « (Score) » & co
+        artist = next(
+            (
+                r["artistName"]
+                for r in results
+                if wanted in r["collectionName"].lower()
+                and any(k in r["primaryGenreName"].lower() for k in ("soundtrack", "score"))
+                and r["artistName"] != "Various Artists"
+            ),
+            None,
+        )
+        with open(cache, "w", encoding="utf-8") as f:
+            json.dump(artist, f)
+        return artist
+    except Exception:  # noqa: BLE001 - facultatif : on affiche l'album seul
+        return None
+
+
 def build_card(cover: str | None, lines: list[str], dark: bool) -> str | None:
     """Image « jaquette arrondie + textes à droite » en base64, ou None."""
     if not ensure_card_tool():
@@ -497,7 +532,8 @@ def render(info: dict) -> None:
         info_line("À SUIVRE", size=HEADER_SIZE)
         # SwiftBar liste les prochains albums séparés par des virgules : on garde le premier
         next_up = re.split(r",\s+", info["upcoming"])[0]
-        info_line(textwrap.fill(next_up, UPCOMING_WIDTH))
+        composer = lookup_composer(next_up)
+        info_line("\n".join(filter(None, [textwrap.fill(next_up, UPCOMING_WIDTH), composer])))
 
     # --- Actions --------------------------------------------------------------
     key = load_platform()
