@@ -16,7 +16,7 @@ SwiftBar plugin - Cinemix Now Playing
 =====================================
 Affiche dans la barre de menus macOS le morceau actuellement diffusé sur Cinemix
 (radio de bandes originales de films) : titre, artiste, album, durée, jaquette,
-prochain album, et raccourcis vers la radio et vers une plateforme d'écoute au choix.
+prochain morceau, et raccourcis vers la radio et vers une plateforme d'écoute au choix.
 
 Plugin non officiel, sans lien avec Cinemix : il lit les pages publiques de la radio
 (https://cinemix.us/SAM/playing.php et la liste « Coming up » sur vhost.fastserv.com),
@@ -95,16 +95,16 @@ PLATFORMS = {
 DEFAULT_PLATFORM = "apple"
 
 # Apparence
-COVER_SIZE = 192         # définition de la jaquette (pixels, pour les écrans Retina)
-COVER_DISPLAY = 80       # taille d'affichage dans le menu (points)
-INFO_COLOR_LIGHT = 59    # couleur ANSI 256 du texte d'information, mode clair
-INFO_COLOR_DARK = 252    # idem, mode sombre
-HEADER_SIZE = 10         # taille du titre de section « À SUIVRE »
-UPCOMING_WIDTH = 60      # largeur max (caractères) de « À suivre », avant retour à la ligne
-TITLE_ICON_PT = 12       # taille (points) de l'icône « radio » dans la barre de menus
-MENU_ICON_PT = 13         # taille (points) des icônes du menu
-MENU_ICON_BOX = (20, 18)  # cadre commun à toutes les icônes du menu (largeur, hauteur), en points
-TITLE_ICON_RAISE = 1.5   # décalage vers le haut de l'icône (points), pour l'aligner sur le texte
+COVER_SIZE = 192          # définition de la jaquette (pixels, pour les écrans Retina)
+COVER_DISPLAY = 80        # taille d'affichage de la jaquette dans le menu (points)
+INFO_COLOR_LIGHT = 59     # couleur ANSI 256 du texte d'information, mode clair
+INFO_COLOR_DARK = 252     # idem, mode sombre
+HEADER_SIZE = 10          # taille du titre de section « À SUIVRE »
+UPCOMING_WIDTH = 60       # largeur max (caractères) des lignes de « À suivre » avant retour à la ligne
+TITLE_ICON_PT = 12        # taille de l'icône « radio » de la barre de menus (points)
+TITLE_ICON_RAISE = 1.5    # décalage vers le haut de cette icône (points), pour l'aligner sur le texte
+MENU_ICON_PT = 13         # taille des icônes du menu (points)
+MENU_ICON_BOX = (20, 18)  # cadre commun à toutes les icônes du menu (largeur, hauteur, en points)
 
 # Fichiers
 SCRIPT = os.path.abspath(__file__)
@@ -226,14 +226,15 @@ try! png.write(to: URL(fileURLWithPath: args[2]))
 '''
 
 
-def fetch_page() -> str:
-    req = urllib.request.Request(
-        URL,
-        headers={"User-Agent": USER_AGENT},
-    )
+def http_get(url: str) -> bytes:
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-        # La page est encodée en Windows-1252
-        return resp.read().decode("cp1252", errors="replace")
+        return resp.read()
+
+
+def fetch_page() -> str:
+    # La page est encodée en Windows-1252
+    return http_get(URL).decode("cp1252", errors="replace")
 
 
 def parse_playing(page: str) -> dict | None:
@@ -267,7 +268,7 @@ def parse_playing(page: str) -> dict | None:
     dur_match = re.search(r"<strong>([^<]+)</strong>", row)
     duration = dur_match.group(1).strip() if dur_match else ""
 
-    # 6. Section "NEXT" (juste après la ligne)
+    # 6. Section "NEXT" (juste après la ligne) : seulement des noms d'albums
     after_row = page[tr_end : tr_end + 2000]
     next_match = re.search(r"NEXT:.*?<b>\s*([^<]+?)\s*</b>", after_row, re.DOTALL)
     upcoming = (
@@ -277,10 +278,7 @@ def parse_playing(page: str) -> dict | None:
     )
 
     # 7. Artiste / titre (split sur " - ")
-    if " - " in track:
-        artist, title = track.split(" - ", 1)
-    else:
-        artist, title = "", track
+    artist, title = track.split(" - ", 1) if " - " in track else ("", track)
 
     return {
         "track": track,
@@ -291,6 +289,22 @@ def parse_playing(page: str) -> dict | None:
         "cover_url": cover_url,
         "upcoming": upcoming,
     }
+
+
+def fetch_next() -> dict | None:
+    """Prochain morceau (titre, artiste, album), lu dans la liste « Coming up » de la radio."""
+    try:
+        page = http_get(COMING_URL).decode("utf-8", errors="replace")
+        section = page.split("BEGIN:COMING UP", 1)[1].split("END:COMING UP", 1)[0]
+        # <a ... title="Artiste - Titre"> Album <br /> Artiste </a> : le premier = prochain morceau
+        m = re.search(r'<a [^>]*title="([^"]+)"[^>]*>\s*([^<]*?)\s*<br\s*/?>', section)
+        if not m:
+            return None
+        track = html.unescape(m.group(1)).strip()
+        artist, title = track.split(" - ", 1) if " - " in track else ("", track)
+        return {"title": title, "artist": artist, "album": html.unescape(m.group(2)).strip()}
+    except Exception:  # noqa: BLE001 - facultatif : on retombe sur l'album de la page principale
+        return None
 
 
 def truncate(s: str, n: int = 55) -> str:
@@ -334,12 +348,9 @@ def fetch_cover_path(url: str) -> str | None:
     )
     try:
         if not os.path.exists(cache):
-            req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-            with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-                raw = resp.read()
             src = cache + ".src"
             with open(src, "wb") as f:
-                f.write(raw)
+                f.write(http_get(url))
             subprocess.run(
                 ["sips", "-s", "format", "png", "-Z", str(COVER_SIZE), src, "--out", cache],
                 capture_output=True, timeout=10, check=True,
@@ -364,7 +375,7 @@ def png_points(path: str, scale: int = 2) -> tuple[int, int]:
 
 
 def ensure_card_tool() -> bool:
-    """Compile (en tâche de fond) l'outil Swift qui dessine la carte, si besoin."""
+    """Compile (en tâche de fond) l'outil Swift qui dessine les images, si besoin."""
     src = CARD_BIN + ".swift"
     try:
         with open(src, encoding="utf-8") as f:
@@ -388,84 +399,47 @@ def ensure_card_tool() -> bool:
     return False
 
 
+def draw(prefix: str, tool_args: list[str | None]) -> tuple[str, int, int] | None:
+    """Fait dessiner une image par l'outil Swift (mise en cache) : (PNG en base64, largeur, hauteur).
+
+    `None` dans `tool_args` marque la place du fichier de sortie. Renvoie `None` si l'outil
+    n'est pas prêt ou échoue : l'appelant utilise alors un affichage de secours.
+    """
+    if not ensure_card_tool():
+        return None
+    key = hashlib.md5(repr((CARD_SWIFT, tool_args)).encode()).hexdigest()
+    out = os.path.join(tempfile.gettempdir(), f"cinemix-{prefix}-{key}.png")
+    try:
+        if not os.path.exists(out):
+            subprocess.run(
+                [CARD_BIN, *[out if a is None else a for a in tool_args]],
+                capture_output=True, timeout=10, check=True,
+            )
+        w, h = png_points(out)
+        return file_b64(out), w, h
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def title_icon() -> str:
     """Paramètres SwiftBar de l'icône « radio » de la barre de menus.
 
-    `sfsize` n'a pas d'effet dans la barre de menus : on dessine le symbole à la
-    taille voulue. Tant que l'outil n'est pas compilé, `sfimage` sert de secours.
+    `sfsize` n'a pas d'effet dans la barre de menus : on dessine le symbole à la taille
+    voulue. Secours, tant que l'outil n'est pas prêt : `sfimage`.
     """
-    if ensure_card_tool():
-        key = hashlib.md5(CARD_SWIFT.encode()).hexdigest()
-        out = os.path.join(tempfile.gettempdir(), f"cinemix-icon-{TITLE_ICON_PT}-{TITLE_ICON_RAISE}-{key}.png")
-        try:
-            if not os.path.exists(out):
-                subprocess.run(
-                    [CARD_BIN, "--symbol", "radio", str(TITLE_ICON_PT), out, str(round(TITLE_ICON_RAISE * 4))],
-                    capture_output=True, timeout=10, check=True,
-                )
-            w, h = png_points(out)
-            return f"templateImage={file_b64(out)} width={w} height={h}"
-        except Exception:  # noqa: BLE001 - icône facultative
-            pass
-    return "sfimage=radio"
+    pad = str(round(TITLE_ICON_RAISE * 4))
+    img = draw("icon", ["--symbol", "radio", str(TITLE_ICON_PT), None, pad])
+    return f"templateImage={img[0]} width={img[1]} height={img[2]}" if img else "sfimage=radio"
 
 
 def menu_icon(name: str) -> str:
     """Paramètres SwiftBar d'une icône de menu : symbole centré dans un cadre de taille fixe.
 
     Les SF Symbols n'ont pas tous la même largeur, ce qui décale les textes ; avec un cadre
-    commun, les textes s'alignent comme dans les menus macOS. Secours : `sfimage`.
+    commun, ils s'alignent comme dans les menus macOS. Secours : `sfimage`.
     """
-    if ensure_card_tool():
-        key = hashlib.md5(CARD_SWIFT.encode()).hexdigest()
-        out = os.path.join(tempfile.gettempdir(), f"cinemix-menuicon-{name}-{key}.png")
-        try:
-            if not os.path.exists(out):
-                subprocess.run(
-                    [CARD_BIN, "--icon", name, str(MENU_ICON_PT), out, *map(str, MENU_ICON_BOX)],
-                    capture_output=True, timeout=10, check=True,
-                )
-            w, h = png_points(out)
-            return f"templateImage={file_b64(out)} width={w} height={h}"
-        except Exception:  # noqa: BLE001 - icône facultative
-            pass
-    return f"sfimage={name}"
-
-
-def fetch_next() -> dict | None:
-    """Prochain morceau (titre, artiste, album), lu dans la liste « Coming up » de la radio."""
-    try:
-        req = urllib.request.Request(COMING_URL, headers={"User-Agent": USER_AGENT})
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-            page = resp.read().decode("utf-8", errors="replace")
-        section = page.split("BEGIN:COMING UP", 1)[1].split("END:COMING UP", 1)[0]
-        # <a ... title="Artiste - Titre"> Album <br /> Artiste </a> : le premier = prochain morceau
-        m = re.search(r'<a [^>]*title="([^"]+)"[^>]*>\s*([^<]*?)\s*<br\s*/?>', section)
-        if not m:
-            return None
-        track = html.unescape(m.group(1)).strip()
-        artist, title = track.split(" - ", 1) if " - " in track else ("", track)
-        return {"title": title, "artist": artist, "album": html.unescape(m.group(2)).strip()}
-    except Exception:  # noqa: BLE001 - facultatif : on retombe sur l'album de la page principale
-        return None
-
-
-def build_card(cover: str | None, lines: list[str], dark: bool) -> str | None:
-    """Image « jaquette arrondie + textes à droite » en base64, ou None."""
-    if not ensure_card_tool():
-        return None
-    key = hashlib.md5(repr((cover, lines, dark, CARD_SWIFT)).encode()).hexdigest()
-    out = os.path.join(tempfile.gettempdir(), f"cinemix-card-{key}.png")
-    try:
-        if not os.path.exists(out):
-            subprocess.run(
-                [CARD_BIN, cover or "-", out, "1" if dark else "0", *lines],
-                capture_output=True, timeout=10, check=True,
-            )
-        w, h = png_points(out)
-        return f"{file_b64(out)} width={w} height={h}"
-    except Exception:  # noqa: BLE001 - on retombe sur l'affichage texte
-        return None
+    img = draw("menuicon", ["--icon", name, str(MENU_ICON_PT), None, *map(str, MENU_ICON_BOX)])
+    return f"templateImage={img[0]} width={img[1]} height={img[2]}" if img else f"sfimage={name}"
 
 
 _menu_lines: list[str] = []
@@ -477,10 +451,12 @@ def emit(line: str) -> None:
 
 
 def info_line(text: str, size: int | None = None, image: str | None = None) -> None:
-    # Ligne non cliquable : sans `href`/`bash`/`color`, SwiftBar la laisse
-    # désactivée (pas de survol), mais le système la grise trop. On la colore
-    # donc via une séquence ANSI, qui n'active pas l'item. `text` peut contenir
-    # plusieurs lignes ; `image` s'affiche alors à gauche du bloc.
+    """Ligne d'information non cliquable (`text` peut avoir plusieurs lignes).
+
+    Sans `href`, `bash` ni `color`, SwiftBar laisse la ligne désactivée (pas de survol),
+    mais le système la grise trop : on la colore donc avec une séquence ANSI, qui n'active
+    pas l'élément. `image` s'affiche à gauche du bloc.
+    """
     color = INFO_COLOR_DARK if is_dark_mode() else INFO_COLOR_LIGHT
     lines = [f"\x1b[38;5;{color}m{t.replace('|', '¦')}\x1b[0m" for t in text.split("\n")]
     params = "ansi=true"
@@ -491,69 +467,79 @@ def info_line(text: str, size: int | None = None, image: str | None = None) -> N
     emit("\\n".join(lines) + f" | {params}")
 
 
-def render(info: dict) -> None:
-    # --- Ligne barre de menus -------------------------------------------------
-    emit(f"{truncate(info['track'], 55).replace('|', '¦')} | {title_icon()}")
+def track_lines(title: str, artist: str, album: str) -> list[str]:
+    """Titre, « Par : artiste » et « Album : album » (les champs vides sont omis)."""
+    lines = [title]
+    if artist:
+        lines.append(f"Par : {artist}")
+    if album:
+        lines.append(f"Album : {album}")
+    return lines
 
-    # --- En cours -------------------------------------------------------------
-    emit("---")
-    cover = fetch_cover_path(info["cover_url"]) if info["cover_url"] else None
-    block = [info["title"]]
-    if info["artist"]:
-        block.append(f"Par : {info['artist']}")
-    if info["album"]:
-        block.append(f"Album : {info['album']}")
+
+def emit_current(info: dict) -> None:
+    """Morceau en cours : jaquette arrondie à gauche, textes à droite."""
+    lines = track_lines(info["title"], info["artist"], info["album"])
     if info["duration"]:
-        block.append(f"Durée : {info['duration']}")
-    card = build_card(cover, block, is_dark_mode())
+        lines.append(f"Durée : {info['duration']}")
+    cover = fetch_cover_path(info["cover_url"]) if info["cover_url"] else None
+    card = draw("card", [cover or "-", None, "1" if is_dark_mode() else "0", *lines])
     if card:
-        emit(f"| image={card}")
+        emit(f"| image={card[0]} width={card[1]} height={card[2]}")
     else:
-        # Outil de dessin pas encore compilé : affichage texte + jaquette
-        info_line("\n".join(block), image=file_b64(cover) if cover else None)
+        # Outil de dessin pas encore prêt : affichage texte + jaquette
+        info_line("\n".join(lines), image=file_b64(cover) if cover else None)
 
-    # --- À suivre -------------------------------------------------------------
-    # En mode démo, pas de lecture réseau : on n'affiche que le texte imposé
-    nxt = None if info.get("demo") else fetch_next()
+
+def emit_next(info: dict) -> None:
+    """Prochain morceau ; à défaut, le prochain album annoncé par la page principale."""
+    nxt = fetch_next()
     if nxt:
-        emit("---")
-        info_line("À SUIVRE", size=HEADER_SIZE)
-        head = f"{nxt['title']} - {nxt['artist']}" if nxt["artist"] else nxt["title"]
-        lines = [textwrap.fill(head, UPCOMING_WIDTH)]
-        if nxt["album"]:
-            lines.append(textwrap.fill(f"({nxt['album']})", UPCOMING_WIDTH))
-        info_line("\n".join(lines))
+        lines = track_lines(nxt["title"], nxt["artist"], nxt["album"])
     elif info["upcoming"]:
-        emit("---")
-        info_line("À SUIVRE", size=HEADER_SIZE)
-        # SwiftBar liste les prochains albums séparés par des virgules : on garde le premier
-        next_up = re.split(r",\s+", info["upcoming"])[0]
-        info_line(textwrap.fill(next_up, UPCOMING_WIDTH))
+        # La page principale liste des albums séparés par des virgules : on garde le premier
+        first_album = re.split(r",\s+", info["upcoming"])[0]
+        lines = [f"Album : {first_album}"]
+    else:
+        return
+    emit("---")
+    info_line("À SUIVRE", size=HEADER_SIZE)
+    info_line("\n".join(textwrap.fill(line, UPCOMING_WIDTH) for line in lines))
 
-    # --- Actions --------------------------------------------------------------
-    key = load_platform()
-    platform = PLATFORMS[key]
+
+def emit_actions(info: dict, platform: dict) -> None:
     emit("---")
     emit(f"Ouvrir Cinemix.radio | href=https://www.cinemix.radio/ {menu_icon('popcorn')}")
     if platform["listen"]:
         emit(f"Écouter dans {platform['name']} | href={platform['listen']} {menu_icon('music.note')}")
-    if info["track"]:
-        q = urllib.parse.quote(info["track"])
-        emit(
-            f"Chercher sur {platform['name']} | "
-            f"href={platform['search'].format(q=q)} {menu_icon('magnifyingglass')}"
-        )
+    q = urllib.parse.quote(info["track"])
+    emit(
+        f"Chercher sur {platform['name']} | "
+        f"href={platform['search'].format(q=q)} {menu_icon('magnifyingglass')}"
+    )
     emit(f"Rafraîchir le plugin | refresh=true {menu_icon('arrow.trianglehead.2.clockwise.rotate.90')}")
 
-    # --- Réglage de la plateforme d'écoute ------------------------------------
+
+def emit_platform_menu(selected: str) -> None:
+    """Sous-menu de choix de la plateforme d'écoute (réglage mémorisé)."""
     emit("---")
     emit(f"Plateforme d'écoute | {menu_icon('gearshape')}")
-    for k, p in PLATFORMS.items():
-        check = " checked=true" if k == key else ""
+    for key, p in PLATFORMS.items():
+        check = " checked=true" if key == selected else ""
         emit(
-            f"--{p['name']} | bash=\"{SCRIPT}\" param1=--set-platform param2={k} "
+            f"--{p['name']} | bash=\"{SCRIPT}\" param1=--set-platform param2={key} "
             f"terminal=false refresh=true{check}"
         )
+
+
+def render(info: dict) -> None:
+    emit(f"{truncate(info['track'], 55).replace('|', '¦')} | {title_icon()}")  # barre de menus
+    emit("---")
+    emit_current(info)
+    emit_next(info)
+    selected = load_platform()
+    emit_actions(info, PLATFORMS[selected])
+    emit_platform_menu(selected)
 
 
 def render_error(msg: str) -> None:
