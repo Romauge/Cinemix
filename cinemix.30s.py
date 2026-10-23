@@ -5,7 +5,7 @@
 # <bitbar.author>Romain</bitbar.author>
 # <bitbar.desc>Affiche le morceau en cours de lecture sur Cinemix (radio de bandes originales de films).</bitbar.desc>
 # <bitbar.dependencies>python3</bitbar.dependencies>
-# <bitbar.abouturl>https://github.com/Romauge/Cinemix</bitbar.abouturl>
+# <bitbar.abouturl>https://github.com/Romauge/cinemix-swiftbar</bitbar.abouturl>
 # <swiftbar.hideLastUpdated>true</swiftbar.hideLastUpdated>
 # <swiftbar.hideDisablePlugin>true</swiftbar.hideDisablePlugin>
 # <swiftbar.hideAbout>true</swiftbar.hideAbout>
